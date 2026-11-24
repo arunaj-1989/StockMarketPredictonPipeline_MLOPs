@@ -1,0 +1,70 @@
+name: nifty50-mlops
+
+x-env: &env
+  MLFLOW_TRACKING_URI: sqlite:////mlflow/mlflow.db
+  MLFLOW_ARTIFACT_ROOT: file:///mlflow/mlruns
+
+x-app: &app
+  build: .
+  image: nifty50-mlops:latest
+  environment: *env
+  volumes:
+    - ./data:/app/data
+    - ./docs:/app/docs
+    - mlflow-data:/mlflow
+
+services:
+  mlflow:
+    <<: *app
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root file:///mlflow/mlruns
+      --host 0.0.0.0 --port 5000
+    ports: ["5000:5000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+  dashboard:
+    <<: *app
+    command: streamlit run src/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    environment:
+      <<: *env
+      API_URL: http://api:8000
+    ports: ["8501:8501"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot jobs: docker compose --profile tools run --rm trainer
+  trainer:
+    <<: *app
+    profiles: ["tools"]
+    command: python src/train.py
+  monitor:
+    <<: *app
+    profiles: ["tools"]
+    command: python src/monitoring.py
+  retrain:
+    <<: *app
+    profiles: ["tools"]
+    command: python src/retrain.py
+
+volumes:
+  mlflow-data:

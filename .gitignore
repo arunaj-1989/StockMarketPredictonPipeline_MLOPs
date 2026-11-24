@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local MLflow state and generated data
+mlflow.db
+mlruns/
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Local Python virtualenv for evidence capture, scratch files
+*.tmp
+logs/

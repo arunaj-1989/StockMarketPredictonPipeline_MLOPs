@@ -1,0 +1,20 @@
+# Runtime set for the Docker image and CI (no torch/transformers: FinBERT scoring runs
+# in the host data_prep step). Keep these pins in sync with requirements.txt.
+numpy==2.2.6
+pandas==2.3.3
+pyarrow==26.0.1
+duckdb==2.0.1
+scikit-learn==1.9.1
+joblib==1.6.0
+pytz==2026.6
+requests==2.34.2
+yfinance==1.8.0
+lightgbm==4.7.0
+mlflow==3.18.0
+cloudpickle==3.1.3
+evidently==0.7.23
+fastapi==0.165.0
+uvicorn==0.54.0
+httpx==0.28.1
+streamlit==1.67.0
+plotly==5.24.1
