@@ -14,6 +14,19 @@ x-app: &app
     - mlflow-data:/mlflow
 
 services:
+  auth:
+    image: quay.io/keycloak/keycloak:26.4
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./auth/tradeassist-realm.json:/opt/keycloak/data/import/tradeassist-realm.json:ro
+    ports: ["8080:8080"]
+    restart: unless-stopped
+
   mlflow:
     <<: *app
     command: >
@@ -46,10 +59,17 @@ services:
     environment:
       <<: *env
       API_URL: http://api:8000
+    volumes:
+      - ./data:/app/data
+      - ./docs:/app/docs
+      - mlflow-data:/mlflow
+      - ./auth/dashboard-secrets.docker.toml:/app/.streamlit/secrets.toml:ro
     ports: ["8501:8501"]
     depends_on:
       api:
         condition: service_healthy
+      auth:
+        condition: service_started
     restart: unless-stopped
 
   # One-shot jobs: docker compose --profile tools run --rm trainer
@@ -68,3 +88,4 @@ services:
 
 volumes:
   mlflow-data:
+  keycloak-data:

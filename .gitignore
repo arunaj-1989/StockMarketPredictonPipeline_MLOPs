@@ -15,3 +15,6 @@ data/processed/*
 # Local Python virtualenv for evidence capture, scratch files
 *.tmp
 logs/
+
+# Streamlit auth secrets (copy from .streamlit/secrets.toml.example)
+.streamlit/secrets.toml

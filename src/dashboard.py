@@ -14,6 +14,7 @@ session and following-session adjusted close changes, not causal price effects.
 import json
 import os
 from datetime import date, datetime
+from pathlib import Path
 
 import duckdb
 import numpy as np
@@ -27,6 +28,9 @@ from market_data import MarketDataError, fetch_trading_holidays, sync_market_dat
 from news import load_news, news_view
 
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+LOGO_PATH = ASSETS_DIR / "tradeassist_wordmark.png"
+LOGO_ICON_PATH = ASSETS_DIR / "tradeassist_logo.png"
 RECON_PATH = PROCESSED_DIR / "reconciliation.parquet"
 DRIFT_PATH = PROCESSED_DIR / "drift_status.json"
 
@@ -58,7 +62,7 @@ CSS = f"""
   container-type: inline-size;
   padding-bottom: 5rem;
 }}
-.st-key-sync_market_data {{
+.st-key-sidebar-bottom-bar {{
   position: fixed;
   bottom: 1rem;
   width: 100cqw;
@@ -116,6 +120,37 @@ def load_holidays() -> dict[date, str]:
     return fetch_trading_holidays()
 
 
+# ------------------------------------------------------------------------------ auth
+def auth_enabled() -> bool:
+    """True when an [auth] OIDC provider is configured in .streamlit/secrets.toml."""
+    try:
+        return "auth" in st.secrets
+    except FileNotFoundError:
+        return False
+
+
+def require_login() -> None:
+    """Stop rendering with a login screen until the user signs in via the local Keycloak IdP."""
+    if not auth_enabled() or st.user.is_logged_in:
+        return
+    _, mid, _ = st.columns([1, 1.1, 1])
+    with mid, st.container(key="card-login"):
+        st.image(str(LOGO_PATH), alt="TradeAssist", width="stretch")
+        st.subheader("Sign in to continue", anchor=False)
+        st.caption("Authentication is handled by the local Keycloak identity service.")
+        if st.button("Log in", key="login", type="primary", icon=":material/login:", width="stretch"):
+            st.login()
+    st.stop()
+
+
+def account_controls() -> None:
+    """Signed-in identity, above the pinned bottom bar of the sidebar."""
+    if not (auth_enabled() and st.user.is_logged_in):
+        return
+    st.divider()
+    st.caption(f":material/account_circle: Signed in as **{st.user.name or st.user.email or 'trader'}**")
+
+
 def market_sidebar() -> None:
     today = datetime.now(IST).date()
     with st.sidebar, st.container(key="sidebar-market-pane"):
@@ -141,7 +176,14 @@ def market_sidebar() -> None:
         except MarketDataError as exc:
             st.warning(str(exc))
 
-        if st.button("Sync market data", key="sync_market_data", icon=":material/sync:", width="stretch"):
+        account_controls()
+        with st.container(key="sidebar-bottom-bar", horizontal=True, vertical_alignment="center"):
+            sync_clicked = st.button("Sync market data", key="sync_market_data", icon=":material/sync:",
+                                     width="stretch")
+            if auth_enabled() and st.user.is_logged_in:
+                if st.button(":material/logout:", key="logout", help="Log out"):
+                    st.logout()
+        if sync_clicked:
             st.session_state.pop("market_sync_result", None)
             try:
                 with st.spinner("Syncing market data..."):
@@ -550,9 +592,11 @@ def page_scorecard() -> None:
     scorecard_view(settings()[0])
 
 
-st.set_page_config(page_title="Nifty 50 trader desk", page_icon=":material/show_chart:", layout="wide")
+st.set_page_config(page_title="TradeAssist", page_icon=":material/show_chart:", layout="wide")
+st.logo(str(LOGO_PATH), size="large", icon_image=str(LOGO_ICON_PATH))
 st.html(CSS)
-st.title("Nifty 50 trader desk", anchor=False)
+require_login()
+st.title("TradeAssist", anchor=False)
 market_sidebar()
 
 keep_state(PAGE_STATE_KEYS)

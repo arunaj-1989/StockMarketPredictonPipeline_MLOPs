@@ -534,13 +534,20 @@ def flat_desk(flat_client, monkeypatch):
     return _launch_dashboard(flat_client, monkeypatch)
 
 
-def _launch_dashboard(api_client, monkeypatch):
+def _launch_dashboard(api_client, monkeypatch, *, auth: dict | None = None, logged_in: bool = True):
     st.cache_data.clear()
     monkeypatch.setattr(
         requests, "get",
         lambda url, params=None, timeout=None: api_client.get(url.removeprefix(dash_api_url()), params=params),
     )
-    return AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
+    monkeypatch.setattr(
+        st, "user",
+        SimpleNamespace(is_logged_in=logged_in, name="Demo Trader", email="trader@tradeassist.local"),
+    )
+    at = AppTest.from_file(str(DASHBOARD), default_timeout=30)
+    if auth is not None:
+        at.secrets["auth"] = auth
+    return at.run()
 
 
 def dash_api_url() -> str:
@@ -549,6 +556,39 @@ def dash_api_url() -> str:
 
 def _picker(at) -> list[str]:
     return [label.split(" · ")[0] for label in at.selectbox(key="trade_symbol").options]
+
+
+def test_dashboard_displays_tradeassist_logo(client, monkeypatch):
+    calls = []
+    render_logo = st.logo
+
+    def record_logo(image, **kwargs):
+        calls.append((Path(image), kwargs))
+        return render_logo(image, **kwargs)
+
+    monkeypatch.setattr(st, "logo", record_logo)
+    dashboard = _launch_dashboard(client, monkeypatch)
+    assert not dashboard.exception
+    assert len(calls) == 1
+    wordmark, kwargs = calls[0]
+    assert wordmark.is_file() and "wordmark" in wordmark.name
+    assert Path(kwargs["icon_image"]).is_file()
+    assert dashboard.title[0].value == "TradeAssist"
+
+
+def test_dashboard_shows_login_screen_when_logged_out(client, monkeypatch):
+    at = _launch_dashboard(client, monkeypatch, auth={"client_id": "tradeassist-dashboard"}, logged_in=False)
+    assert not at.exception
+    assert at.subheader[0].value == "Sign in to continue"
+    assert at.button(key="login")
+    assert not at.title and not at.sidebar.button
+
+
+def test_sidebar_has_account_controls_when_authenticated(client, monkeypatch):
+    at = _launch_dashboard(client, monkeypatch, auth={"client_id": "tradeassist-dashboard"}, logged_in=True)
+    assert not at.exception
+    assert at.title[0].value == "TradeAssist"
+    assert at.sidebar.button(key="logout")
 
 
 def test_controls_live_in_the_main_pane_and_drive_the_picker(desk):
@@ -595,6 +635,7 @@ def test_dashboard_tolerates_an_older_api_without_signal_quality_fields(client, 
             client.get(url.removeprefix(dash_api_url()), params=params)
         ),
     )
+    monkeypatch.setattr(st, "user", SimpleNamespace(is_logged_in=True, name="Demo Trader", email="t@t.local"))
     old = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
     assert not old.exception
     assert not old.warning and _picker(old)
